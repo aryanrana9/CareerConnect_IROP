@@ -1,6 +1,7 @@
 const express = require('express');
-const { Job, User } = require('../models');
-const { verifyToken, isInterviewer, isAdmin } = require('../middleware/auth');
+const { Job, User, Resume } = require('../models');
+const { verifyToken, isInterviewer, isAdmin, isStudent } = require('../middleware/auth');
+const { matchResumeWithJob } = require('../utils/aiMatcher');
 const multer = require('multer');
 const path = require('path');
 
@@ -47,6 +48,34 @@ router.get('/all', verifyToken, async (req, res) => {
     });
     res.json(jobs);
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST evaluate / check compatibility between a resume and job (Student)
+router.post('/:id/check-match', verifyToken, isStudent, async (req, res) => {
+  try {
+    const { resume_id } = req.body;
+    if (!resume_id) {
+      return res.status(400).json({ error: 'Please select a resume to evaluate' });
+    }
+
+    const job = await Job.findByPk(req.params.id);
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    const resume = await Resume.findOne({
+      where: { id: resume_id, user_id: req.user.id }
+    });
+    if (!resume) {
+      return res.status(404).json({ error: 'Selected resume not found' });
+    }
+
+    const matchAnalysis = await matchResumeWithJob(job, resume);
+    res.json(matchAnalysis);
+  } catch (error) {
+    console.error('Error in check-match route:', error);
     res.status(500).json({ error: error.message });
   }
 });
